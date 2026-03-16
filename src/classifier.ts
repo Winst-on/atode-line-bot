@@ -91,6 +91,7 @@ async function fetchUrlMeta(url: string): Promise<{ content: string | null; ogIm
 
 export async function fetchOgImage(url: string): Promise<string | null> {
   const { ogImage } = await fetchUrlMeta(url);
+  console.log(`[classifier] fetchOgImage result: ${ogImage ? ogImage.substring(0, 80) : "null"}`);
   return ogImage;
 }
 

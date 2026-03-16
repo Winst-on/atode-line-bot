@@ -120,6 +120,7 @@ async function handleMemoSave(userId: string, input: string): Promise<void> {
   ]);
 
   // DB保存
+  console.log(`[server] Saving memo with ogImage: ${ogImage ? "yes" : "null"}, inputType: ${inputType}`);
   const memo = await saveMemo(profile.id, input, inputType, classification, ogImage);
 
   // リマインド日時を計算してスケジュール
