@@ -93,8 +93,9 @@ export async function classifyMemo(input: string): Promise<ClassificationResult>
 
   // Claude Haiku APIで分類
   try {
+    const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
     const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: model as any,
       max_tokens: 256,
       messages: [
         {
