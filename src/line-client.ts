@@ -232,6 +232,7 @@ export async function sendReminderWithActions(
   rawInput?: string
 ): Promise<void> {
   const isUrl = rawInput && /^https?:\/\//i.test(rawInput);
+  const hasImage = Boolean(imageUrl);
 
   const bodyContents: object[] = [
     {
@@ -242,7 +243,26 @@ export async function sendReminderWithActions(
     },
   ];
 
+  if (hasImage) {
+    bodyContents.push({
+      type: "text",
+      text: "添付: 保存した画像を再表示しています",
+      size: "xs",
+      color: "#888888",
+      wrap: true,
+      margin: "md",
+    });
+  }
+
   if (isUrl) {
+    bodyContents.push({
+      type: "text",
+      text: `元URL\n${truncateText(rawInput, 120)}`,
+      size: "xs",
+      color: "#888888",
+      wrap: true,
+      margin: "md",
+    });
     bodyContents.push({
       type: "button",
       action: {
@@ -320,4 +340,11 @@ function formatDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}/${m}/${d}`;
+}
+
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 1)}…`;
 }
