@@ -31,11 +31,24 @@ export async function getOrCreateProfile(lineUserId: string): Promise<Profile> {
 
 // ===== Memo操作 =====
 
+export async function uploadImage(buffer: Buffer, filename: string): Promise<string | null> {
+  const { error } = await supabase.storage
+    .from("memo-images")
+    .upload(filename, buffer, { contentType: "image/jpeg", upsert: false });
+  if (error) {
+    console.error("[database] Image upload failed:", error.message);
+    return null;
+  }
+  const { data } = supabase.storage.from("memo-images").getPublicUrl(filename);
+  return data.publicUrl;
+}
+
 export async function saveMemo(
   userId: string,
   rawInput: string,
   inputType: "text" | "url",
-  classification: ClassificationResult
+  classification: ClassificationResult,
+  imageUrl?: string | null
 ): Promise<Memo> {
   const { data, error } = await supabase
     .from("memos")
@@ -49,6 +62,7 @@ export async function saveMemo(
       ai_remind_strategy: classification.remind_strategy,
       source: "line",
       is_archived: false,
+      image_url: imageUrl ?? null,
     })
     .select()
     .single();

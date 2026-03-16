@@ -196,56 +196,89 @@ export async function sendReminderWithActions(
   userId: string,
   messageText: string,
   memoId: string,
-  reminderId: string
+  reminderId: string,
+  imageUrl?: string | null,
+  rawInput?: string
 ): Promise<void> {
+  const isUrl = rawInput && /^https?:\/\//i.test(rawInput);
+
+  const bodyContents: object[] = [
+    {
+      type: "text",
+      text: messageText,
+      wrap: true,
+      size: "sm",
+    },
+  ];
+
+  if (isUrl) {
+    bodyContents.push({
+      type: "button",
+      action: {
+        type: "uri",
+        label: "🔗 元のURLを開く",
+        uri: rawInput,
+      },
+      style: "link",
+      height: "sm",
+      margin: "sm",
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bubble: any = {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: bodyContents,
+    },
+    footer: {
+      type: "box",
+      layout: "horizontal",
+      spacing: "sm",
+      contents: [
+        {
+          type: "button",
+          action: {
+            type: "postback",
+            label: "🗑️ 削除",
+            data: `action=delete&memoId=${memoId}&reminderId=${reminderId}`,
+            displayText: "このメモを削除しました",
+          },
+          style: "secondary",
+          height: "sm",
+        },
+        {
+          type: "button",
+          action: {
+            type: "postback",
+            label: "🔁 1週間後にまた",
+            data: `action=snooze&memoId=${memoId}`,
+            displayText: "1週間後にもう一度リマインドします",
+          },
+          style: "primary",
+          height: "sm",
+          color: "#4CAF50",
+        },
+      ],
+    },
+  };
+
+  if (imageUrl) {
+    bubble.hero = {
+      type: "image",
+      url: imageUrl,
+      size: "full",
+      aspectRatio: "20:13",
+      aspectMode: "cover",
+    };
+  }
+
   const message: FlexMessage = {
     type: "flex",
     altText: messageText,
-    contents: {
-      type: "bubble",
-      body: {
-        type: "box",
-        layout: "vertical",
-        contents: [
-          {
-            type: "text",
-            text: messageText,
-            wrap: true,
-            size: "sm",
-          },
-        ],
-      },
-      footer: {
-        type: "box",
-        layout: "horizontal",
-        spacing: "sm",
-        contents: [
-          {
-            type: "button",
-            action: {
-              type: "postback",
-              label: "🗑️ 削除",
-              data: `action=delete&memoId=${memoId}&reminderId=${reminderId}`,
-              displayText: "このメモを削除しました",
-            },
-            style: "secondary",
-            height: "sm",
-          },
-          {
-            type: "button",
-            action: {
-              type: "postback",
-              label: "🔁 1週間後にまた",
-              data: `action=snooze&memoId=${memoId}`,
-              displayText: "1週間後にもう一度リマインドします",
-            },
-            style: "primary",
-            height: "sm",
-            color: "#4CAF50",
-          },
-        ],
-      },
-    },
+    contents: bubble,
   };
 
   await lineClient.pushMessage(userId, message);

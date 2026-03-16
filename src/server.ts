@@ -17,6 +17,7 @@ import {
   scheduleReminder,
   archiveMemo,
   scheduleReminderAt,
+  uploadImage,
 } from "./database";
 import { sendText, sendMemoSaved, sendMemoList, downloadImage } from "./line-client";
 import { calcReminderDates } from "./reminder-scheduler";
@@ -151,9 +152,13 @@ async function handleImageSave(userId: string, messageId: string): Promise<void>
 
   const profile = await getOrCreateProfile(userId);
   const imageBuffer = await downloadImage(messageId);
-  const classification = await classifyImage(imageBuffer);
 
-  const memo = await saveMemo(profile.id, "[画像メモ]", "text", classification);
+  // Supabase Storageにアップロード
+  const filename = `${profile.id}/${Date.now()}.jpg`;
+  const imageUrl = await uploadImage(imageBuffer, filename);
+
+  const classification = await classifyImage(imageBuffer);
+  const memo = await saveMemo(profile.id, "[画像メモ]", "text", classification, imageUrl);
   const reminderDates = calcReminderDates(classification.category, classification.remind_strategy);
   for (const date of reminderDates) {
     await scheduleReminder(memo.id, date);

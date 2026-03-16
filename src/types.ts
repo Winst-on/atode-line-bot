@@ -43,6 +43,7 @@ export interface Memo {
   ai_remind_strategy: RemindStrategy;
   source: "line";
   is_archived: boolean;
+  image_url: string | null;
   created_at: string;
 }
 

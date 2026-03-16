@@ -71,7 +71,7 @@ async function processReminders(): Promise<void> {
           reminderCount
         );
 
-        await sendReminderWithActions(lineUserId, message, memo.id, reminder.id);
+        await sendReminderWithActions(lineUserId, message, memo.id, reminder.id, memo.image_url, memo.raw_input);
         await markReminderSent(reminder.id);
 
         console.log(`[scheduler] Sent reminder ${reminder.id} to user ${lineUserId}`);
