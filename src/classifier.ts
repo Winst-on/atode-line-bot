@@ -54,11 +54,11 @@ function isUrl(text: string): boolean {
 // Twitter/Xはスクレイピングをブロックするためスキップするドメインリスト
 const SKIP_FETCH_DOMAINS = ["twitter.com", "x.com", "t.co"];
 
-async function fetchUrlContent(url: string): Promise<string | null> {
+async function fetchUrlMeta(url: string): Promise<{ content: string | null; ogImage: string | null }> {
   try {
     const urlObj = new URL(url);
     const hostname = urlObj.hostname.replace("www.", "");
-    if (SKIP_FETCH_DOMAINS.some((d) => hostname.includes(d))) return null;
+    if (SKIP_FETCH_DOMAINS.some((d) => hostname.includes(d))) return { content: null, ogImage: null };
 
     const res = await axios.get(url, {
       timeout: 5000,
@@ -73,11 +73,20 @@ async function fetchUrlContent(url: string): Promise<string | null> {
       $('meta[property="og:description"]').attr("content") ||
       $('meta[name="description"]').attr("content") ||
       "";
+    const ogImage =
+      $('meta[property="og:image"]').attr("content") ||
+      $('meta[name="twitter:image"]').attr("content") ||
+      null;
     const content = [title, description].filter(Boolean).join(" / ").substring(0, 200);
-    return content || null;
+    return { content: content || null, ogImage: ogImage || null };
   } catch {
-    return null;
+    return { content: null, ogImage: null };
   }
+}
+
+export async function fetchOgImage(url: string): Promise<string | null> {
+  const { ogImage } = await fetchUrlMeta(url);
+  return ogImage;
 }
 
 export async function classifyImage(imageBuffer: Buffer): Promise<ClassificationResult> {
@@ -175,7 +184,7 @@ export async function classifyMemo(input: string): Promise<ClassificationResult>
   // URLの場合はページタイトル・説明文を取得してからAIに渡す
   let classifyTarget = input;
   if (isUrl(input)) {
-    const urlContent = await fetchUrlContent(input);
+    const { content: urlContent } = await fetchUrlMeta(input);
     if (urlContent) {
       classifyTarget = `${urlContent}\n（URL: ${input}）`;
       console.log(`[classifier] Fetched URL content: ${urlContent.substring(0, 50)}...`);

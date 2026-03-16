@@ -9,7 +9,7 @@
 import "dotenv/config";
 import express from "express";
 import { middleware, WebhookEvent, MessageEvent, TextEventMessage, PostbackEvent } from "@line/bot-sdk";
-import { classifyMemo, classifyImage } from "./classifier";
+import { classifyMemo, classifyImage, fetchOgImage } from "./classifier";
 import {
   getOrCreateProfile,
   saveMemo,
@@ -113,11 +113,14 @@ async function handleMemoSave(userId: string, input: string): Promise<void> {
   // URLかテキストかを判定
   const inputType = /^https?:\/\//i.test(input) ? "url" : "text";
 
-  // AI分類
-  const classification = await classifyMemo(input);
+  // URLの場合はOGP画像を取得（AI分類と並行）
+  const [classification, ogImage] = await Promise.all([
+    classifyMemo(input),
+    inputType === "url" ? fetchOgImage(input) : Promise.resolve(null),
+  ]);
 
   // DB保存
-  const memo = await saveMemo(profile.id, input, inputType, classification);
+  const memo = await saveMemo(profile.id, input, inputType, classification, ogImage);
 
   // リマインド日時を計算してスケジュール
   const reminderDates = calcReminderDates(
@@ -135,7 +138,7 @@ async function handleMemoSave(userId: string, input: string): Promise<void> {
     classification.category,
     classification.summary || input.substring(0, 20),
     reminderDates[0],
-    null,
+    ogImage,
     input
   );
 }
