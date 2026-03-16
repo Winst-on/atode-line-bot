@@ -61,8 +61,13 @@ async function fetchUrlMeta(url: string): Promise<{ content: string | null; ogIm
     if (SKIP_FETCH_DOMAINS.some((d) => hostname.includes(d))) return { content: null, ogImage: null };
 
     const res = await axios.get(url, {
-      timeout: 5000,
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; Atodebot/1.0)" },
+      timeout: 8000,
+      maxRedirects: 5,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "ja,en-US;q=0.7,en;q=0.3",
+      },
     });
     const $ = cheerio.load(res.data as string);
     const title =
@@ -84,7 +89,8 @@ async function fetchUrlMeta(url: string): Promise<{ content: string | null; ogIm
     }
     const content = [title, description].filter(Boolean).join(" / ").substring(0, 200);
     return { content: content || null, ogImage: ogImage || null };
-  } catch {
+  } catch (e: any) {
+    console.log(`[classifier] fetchUrlMeta failed: ${e?.message || e}`);
     return { content: null, ogImage: null };
   }
 }
