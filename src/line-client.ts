@@ -6,6 +6,37 @@ export const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN!,
 });
 
+const LINE_PUSH_RETRY_DELAYS_MS = [500, 1500, 3000];
+
+async function pushMessageWithRetry(
+  userId: string,
+  message: TextMessage | FlexMessage
+): Promise<void> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= LINE_PUSH_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      await lineClient.pushMessage(userId, message);
+      return;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === LINE_PUSH_RETRY_DELAYS_MS.length) {
+        break;
+      }
+
+      const delayMs = LINE_PUSH_RETRY_DELAYS_MS[attempt];
+      console.warn(
+        `[line-client] pushMessage retry ${attempt + 1}/${LINE_PUSH_RETRY_DELAYS_MS.length} after error:`,
+        error
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError;
+}
+
 /**
  * LINEから画像をダウンロードしてBufferで返す
  */
@@ -23,7 +54,7 @@ export async function downloadImage(messageId: string): Promise<Buffer> {
  * テキストメッセージを送信
  */
 export async function sendText(userId: string, text: string): Promise<void> {
-  await lineClient.pushMessage(userId, {
+  await pushMessageWithRetry(userId, {
     type: "text",
     text,
   });
@@ -126,7 +157,7 @@ export async function sendMemoSaved(
     },
   };
 
-  await lineClient.pushMessage(userId, message);
+  await pushMessageWithRetry(userId, message);
 }
 
 /**
@@ -182,7 +213,7 @@ export async function sendMemoList(userId: string, memos: Memo[]): Promise<void>
     },
   };
 
-  await lineClient.pushMessage(userId, flexMessage);
+  await pushMessageWithRetry(userId, flexMessage);
 
   if (memos.length > 5) {
     await sendText(userId, `他に ${memos.length - 5} 件のメモがあります。`);
@@ -281,7 +312,7 @@ export async function sendReminderWithActions(
     contents: bubble,
   };
 
-  await lineClient.pushMessage(userId, message);
+  await pushMessageWithRetry(userId, message);
 }
 
 function formatDate(date: Date): string {
