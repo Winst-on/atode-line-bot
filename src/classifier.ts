@@ -83,7 +83,8 @@ export async function classifyMemo(input: string): Promise<ClassificationResult>
     if (domainResult) {
       console.log(`[classifier] Domain-based classification: ${domainResult.category}`);
       return {
-        ...domainResult,
+        category: domainResult.category,
+        remind_strategy: domainResult.strategy,
         sub_category: "",
         summary: input.substring(0, 50),
         confidence: 0.95,
