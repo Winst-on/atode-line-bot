@@ -119,7 +119,9 @@ async function handleMemoSave(userId: string, input: string): Promise<void> {
     userId,
     classification.category,
     classification.summary || input.substring(0, 20),
-    reminderDates[0] // 最初のリマインド日時を表示
+    reminderDates[0],
+    null,
+    input
   );
 }
 
@@ -164,7 +166,7 @@ async function handleImageSave(userId: string, messageId: string): Promise<void>
     await scheduleReminder(memo.id, date);
   }
 
-  await sendMemoSaved(userId, classification.category, classification.summary || "画像メモ", reminderDates[0]);
+  await sendMemoSaved(userId, classification.category, classification.summary || "画像メモ", reminderDates[0], imageUrl);
 }
 
 async function handleListCommand(userId: string): Promise<void> {

@@ -67,7 +67,9 @@ export async function sendMemoSaved(
   userId: string,
   category: Category,
   summary: string,
-  remindDate: Date
+  remindDate: Date,
+  imageUrl?: string | null,
+  rawInput?: string
 ): Promise<void> {
   const categoryLabels: Record<Category, string> = {
     shopping: "🛍️ 買い物",
@@ -80,88 +82,87 @@ export async function sendMemoSaved(
 
   const label = categoryLabels[category];
   const remindStr = formatDate(remindDate);
+  const isUrl = rawInput && /^https?:\/\//i.test(rawInput);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bubble: any = {
+    type: "bubble",
+    size: "kilo",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#4CAF50",
+      paddingAll: "12px",
+      contents: [
+        {
+          type: "text",
+          text: "✅ メモを保存しました",
+          color: "#FFFFFF",
+          size: "sm",
+          weight: "bold",
+        },
+      ],
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      spacing: "md",
+      contents: [
+        {
+          type: "text",
+          text: summary || "（メモ）",
+          size: "md",
+          weight: "bold",
+          wrap: true,
+        },
+        {
+          type: "box",
+          layout: "horizontal",
+          contents: [
+            { type: "text", text: "カテゴリ", size: "xs", color: "#888888", flex: 2 },
+            { type: "text", text: label, size: "xs", flex: 3 },
+          ],
+        },
+        {
+          type: "box",
+          layout: "horizontal",
+          contents: [
+            { type: "text", text: "リマインド", size: "xs", color: "#888888", flex: 2 },
+            { type: "text", text: remindStr, size: "xs", flex: 3 },
+          ],
+        },
+        ...(isUrl ? [{
+          type: "button",
+          action: { type: "uri", label: "🔗 URLを開く", uri: rawInput },
+          style: "link",
+          height: "sm",
+          margin: "sm",
+        }] : []),
+      ],
+    },
+  };
+
+  if (imageUrl) {
+    bubble.hero = {
+      type: "image",
+      url: imageUrl,
+      size: "full",
+      aspectRatio: "20:13",
+      aspectMode: "cover",
+    };
+  }
 
   const message: FlexMessage = {
     type: "flex",
     altText: `「${summary}」を保存しました`,
-    contents: {
-      type: "bubble",
-      size: "kilo",
-      header: {
-        type: "box",
-        layout: "vertical",
-        backgroundColor: "#4CAF50",
-        paddingAll: "12px",
-        contents: [
-          {
-            type: "text",
-            text: "✅ メモを保存しました",
-            color: "#FFFFFF",
-            size: "sm",
-            weight: "bold",
-          },
-        ],
-      },
-      body: {
-        type: "box",
-        layout: "vertical",
-        spacing: "md",
-        contents: [
-          {
-            type: "text",
-            text: summary || "（メモ）",
-            size: "md",
-            weight: "bold",
-            wrap: true,
-          },
-          {
-            type: "box",
-            layout: "horizontal",
-            contents: [
-              {
-                type: "text",
-                text: "カテゴリ",
-                size: "xs",
-                color: "#888888",
-                flex: 2,
-              },
-              {
-                type: "text",
-                text: label,
-                size: "xs",
-                flex: 3,
-              },
-            ],
-          },
-          {
-            type: "box",
-            layout: "horizontal",
-            contents: [
-              {
-                type: "text",
-                text: "リマインド",
-                size: "xs",
-                color: "#888888",
-                flex: 2,
-              },
-              {
-                type: "text",
-                text: remindStr,
-                size: "xs",
-                flex: 3,
-              },
-            ],
-          },
-        ],
-      },
-    },
+    contents: bubble,
   };
 
   await pushMessageWithRetry(userId, message);
 }
 
 /**
- * メモ一覧をFlexで送信（最大5件）
+ * メモ一覧をFlexで送信（カルーセル最大12件 + 残りはテキスト一覧）
  */
 export async function sendMemoList(userId: string, memos: Memo[]): Promise<void> {
   if (memos.length === 0) {
@@ -178,31 +179,57 @@ export async function sendMemoList(userId: string, memos: Memo[]): Promise<void>
     memo: "💡",
   };
 
-  const displayMemos = memos.slice(0, 5);
-  const bubbles = displayMemos.map((memo) => ({
-    type: "bubble" as const,
-    size: "micro" as const,
-    body: {
-      type: "box" as const,
-      layout: "vertical" as const,
-      spacing: "sm" as const,
-      contents: [
-        {
-          type: "text" as const,
-          text: `${categoryEmoji[memo.ai_category as Category] || "📌"} ${memo.ai_summary || memo.raw_input.substring(0, 20)}`,
-          size: "sm" as const,
-          weight: "bold" as const,
-          wrap: true,
-        },
-        {
-          type: "text" as const,
-          text: formatDate(new Date(memo.created_at)),
-          size: "xxs" as const,
-          color: "#888888",
-        },
-      ],
-    },
-  }));
+  const CAROUSEL_LIMIT = 12;
+  const displayMemos = memos.slice(0, CAROUSEL_LIMIT);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bubbles: any[] = displayMemos.map((memo) => {
+    const isUrl = /^https?:\/\//i.test(memo.raw_input);
+    const bodyContents: object[] = [
+      {
+        type: "text",
+        text: `${categoryEmoji[memo.ai_category as Category] || "📌"} ${memo.ai_summary || memo.raw_input.substring(0, 20)}`,
+        size: "sm",
+        weight: "bold",
+        wrap: true,
+      },
+      {
+        type: "text",
+        text: formatDate(new Date(memo.created_at)),
+        size: "xxs",
+        color: "#888888",
+      },
+      ...(isUrl ? [{
+        type: "button",
+        action: { type: "uri", label: "🔗 開く", uri: memo.raw_input },
+        style: "link",
+        height: "sm",
+        margin: "xs",
+      }] : []),
+    ];
+
+    const bubble: Record<string, object | string> = {
+      type: "bubble",
+      size: memo.image_url ? "kilo" : "micro",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: bodyContents,
+      },
+    };
+
+    if (memo.image_url) {
+      bubble.hero = {
+        type: "image",
+        url: memo.image_url,
+        size: "full",
+        aspectRatio: "20:13",
+        aspectMode: "cover",
+      };
+    }
+
+    return bubble;
+  });
 
   const flexMessage: FlexMessage = {
     type: "flex",
@@ -215,8 +242,15 @@ export async function sendMemoList(userId: string, memos: Memo[]): Promise<void>
 
   await pushMessageWithRetry(userId, flexMessage);
 
-  if (memos.length > 5) {
-    await sendText(userId, `他に ${memos.length - 5} 件のメモがあります。`);
+  // 13件目以降はテキスト一覧で全件表示
+  if (memos.length > CAROUSEL_LIMIT) {
+    const remaining = memos.slice(CAROUSEL_LIMIT);
+    const lines = remaining.map((memo, i) => {
+      const emoji = categoryEmoji[memo.ai_category as Category] || "📌";
+      const summary = memo.ai_summary || memo.raw_input.substring(0, 20);
+      return `${CAROUSEL_LIMIT + i + 1}. ${emoji} ${summary}（${formatDate(new Date(memo.created_at))}）`;
+    });
+    await sendText(userId, `📋 続き（${CAROUSEL_LIMIT + 1}〜${memos.length}件目）\n\n${lines.join("\n")}`);
   }
 }
 
