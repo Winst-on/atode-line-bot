@@ -80,6 +80,18 @@ export async function archiveMemo(memoId: string): Promise<void> {
 
 // ===== Reminder操作 =====
 
+export async function scheduleReminderAt(memoId: string, scheduledAt: Date): Promise<void> {
+  const { error } = await supabase
+    .from("reminders")
+    .insert({
+      memo_id: memoId,
+      scheduled_at: scheduledAt.toISOString(),
+      channel: "line",
+      sent_at: null,
+    });
+  if (error) throw new Error(`Failed to schedule reminder: ${error.message}`);
+}
+
 export async function scheduleReminder(memoId: string, scheduledAt: Date): Promise<void> {
   const { error } = await supabase
     .from("reminders")

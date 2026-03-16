@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import axios from "axios";
+import * as cheerio from "cheerio";
 import { Category, ClassificationResult, RemindStrategy } from "./types";
 
 const anthropic = new Anthropic({
@@ -49,6 +51,84 @@ function isUrl(text: string): boolean {
   return /^https?:\/\//i.test(text.trim());
 }
 
+// Twitter/Xはスクレイピングをブロックするためスキップするドメインリスト
+const SKIP_FETCH_DOMAINS = ["twitter.com", "x.com", "t.co"];
+
+async function fetchUrlContent(url: string): Promise<string | null> {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.replace("www.", "");
+    if (SKIP_FETCH_DOMAINS.some((d) => hostname.includes(d))) return null;
+
+    const res = await axios.get(url, {
+      timeout: 5000,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Atodebot/1.0)" },
+    });
+    const $ = cheerio.load(res.data as string);
+    const title =
+      $('meta[property="og:title"]').attr("content") ||
+      $("title").text() ||
+      "";
+    const description =
+      $('meta[property="og:description"]').attr("content") ||
+      $('meta[name="description"]').attr("content") ||
+      "";
+    const content = [title, description].filter(Boolean).join(" / ").substring(0, 200);
+    return content || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function classifyImage(imageBuffer: Buffer): Promise<ClassificationResult> {
+  try {
+    const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
+    const message = await (anthropic.messages.create as any)({
+      model,
+      max_tokens: 256,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/jpeg",
+                data: imageBuffer.toString("base64"),
+              },
+            },
+            {
+              type: "text",
+              text: `${CLASSIFICATION_PROMPT}\n\n【分類対象】\n上記の画像の内容をメモとして分類してください。画像に含まれるテキストや情報を読み取って分類してください。`,
+            },
+          ],
+        },
+      ],
+    });
+
+    const responseText = message.content[0].type === "text" ? message.content[0].text : "";
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found");
+
+    const result = JSON.parse(jsonMatch[0]) as ClassificationResult;
+    const validCategories: Category[] = ["shopping", "event", "restaurant", "book", "travel", "memo"];
+    if (!validCategories.includes(result.category)) result.category = "memo";
+
+    console.log(`[classifier] Image classification: ${result.category}`);
+    return result;
+  } catch (error) {
+    console.error("[classifier] Image classification failed:", error);
+    return {
+      category: "memo",
+      sub_category: "画像メモ",
+      summary: "画像メモ",
+      remind_strategy: "weekly",
+      confidence: 0.0,
+    };
+  }
+}
+
 const CLASSIFICATION_PROMPT = `あなたはメモ分類AIです。ユーザーが送ったテキストやURLを以下の6カテゴリに分類してください。
 
 【カテゴリ一覧】
@@ -92,6 +172,16 @@ export async function classifyMemo(input: string): Promise<ClassificationResult>
     }
   }
 
+  // URLの場合はページタイトル・説明文を取得してからAIに渡す
+  let classifyTarget = input;
+  if (isUrl(input)) {
+    const urlContent = await fetchUrlContent(input);
+    if (urlContent) {
+      classifyTarget = `${urlContent}\n（URL: ${input}）`;
+      console.log(`[classifier] Fetched URL content: ${urlContent.substring(0, 50)}...`);
+    }
+  }
+
   // Claude Haiku APIで分類
   try {
     const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
@@ -101,7 +191,7 @@ export async function classifyMemo(input: string): Promise<ClassificationResult>
       messages: [
         {
           role: "user",
-          content: `${CLASSIFICATION_PROMPT}\n\n【分類対象】\n${input}`,
+          content: `${CLASSIFICATION_PROMPT}\n\n【分類対象】\n${classifyTarget}`,
         },
       ],
     });

@@ -1,9 +1,23 @@
 import { Client, FlexMessage, TextMessage } from "@line/bot-sdk";
+import { Readable } from "stream";
 import { Category, Memo } from "./types";
 
 export const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN!,
 });
+
+/**
+ * LINEから画像をダウンロードしてBufferで返す
+ */
+export async function downloadImage(messageId: string): Promise<Buffer> {
+  const stream = await lineClient.getMessageContent(messageId) as unknown as Readable;
+  const chunks: Buffer[] = [];
+  return new Promise((resolve, reject) => {
+    stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", reject);
+  });
+}
 
 /**
  * テキストメッセージを送信
@@ -173,6 +187,68 @@ export async function sendMemoList(userId: string, memos: Memo[]): Promise<void>
   if (memos.length > 5) {
     await sendText(userId, `他に ${memos.length - 5} 件のメモがあります。`);
   }
+}
+
+/**
+ * リマインドメッセージ（削除・スヌーズボタン付き）を送信
+ */
+export async function sendReminderWithActions(
+  userId: string,
+  messageText: string,
+  memoId: string,
+  reminderId: string
+): Promise<void> {
+  const message: FlexMessage = {
+    type: "flex",
+    altText: messageText,
+    contents: {
+      type: "bubble",
+      body: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: messageText,
+            wrap: true,
+            size: "sm",
+          },
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "horizontal",
+        spacing: "sm",
+        contents: [
+          {
+            type: "button",
+            action: {
+              type: "postback",
+              label: "🗑️ 削除",
+              data: `action=delete&memoId=${memoId}&reminderId=${reminderId}`,
+              displayText: "このメモを削除しました",
+            },
+            style: "secondary",
+            height: "sm",
+          },
+          {
+            type: "button",
+            action: {
+              type: "postback",
+              label: "🔁 1週間後にまた",
+              data: `action=snooze&memoId=${memoId}`,
+              displayText: "1週間後にもう一度リマインドします",
+            },
+            style: "primary",
+            height: "sm",
+            color: "#4CAF50",
+          },
+        ],
+      },
+    },
+  };
+
+  await lineClient.pushMessage(userId, message);
 }
 
 function formatDate(date: Date): string {

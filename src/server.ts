@@ -8,15 +8,17 @@
 
 import "dotenv/config";
 import express from "express";
-import { middleware, WebhookEvent, MessageEvent, TextEventMessage } from "@line/bot-sdk";
-import { classifyMemo } from "./classifier";
+import { middleware, WebhookEvent, MessageEvent, TextEventMessage, PostbackEvent } from "@line/bot-sdk";
+import { classifyMemo, classifyImage } from "./classifier";
 import {
   getOrCreateProfile,
   saveMemo,
   getMemosByUser,
   scheduleReminder,
+  archiveMemo,
+  scheduleReminderAt,
 } from "./database";
-import { sendText, sendMemoSaved, sendMemoList } from "./line-client";
+import { sendText, sendMemoSaved, sendMemoList, downloadImage } from "./line-client";
 import { calcReminderDates } from "./reminder-scheduler";
 
 // スケジューラーを同プロセスで起動
@@ -46,23 +48,28 @@ app.post("/webhook", lineMiddleware, async (req, res) => {
 });
 
 async function handleEvent(event: WebhookEvent): Promise<void> {
-  if (event.type !== "message") return;
-  if (event.message.type !== "text") {
-    // テキスト以外（画像・スタンプ等）
-    await sendText(
-      event.source.userId!,
-      "テキストかURLを送ってください。\nコマンド一覧: 「一覧」「help」"
-    );
+  if (event.type === "postback") {
+    await handlePostback(event as PostbackEvent);
     return;
   }
-
-  const messageEvent = event as MessageEvent;
-  const textMessage = messageEvent.message as TextEventMessage;
+  if (event.type !== "message") return;
   const userId = event.source.userId!;
-  const text = textMessage.text.trim();
 
   try {
-    // コマンド処理
+    if (event.message.type === "image") {
+      await handleImageSave(userId, event.message.id);
+      return;
+    }
+
+    if (event.message.type !== "text") {
+      await sendText(userId, "テキスト・URL・画像を送ってください。\nコマンド一覧: 「一覧」「help」");
+      return;
+    }
+
+    const messageEvent = event as MessageEvent;
+    const textMessage = messageEvent.message as TextEventMessage;
+    const text = textMessage.text.trim();
+
     if (text === "一覧" || text === "リスト" || text === "list") {
       await handleListCommand(userId);
       return;
@@ -73,7 +80,6 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
       return;
     }
 
-    // メモの保存処理
     await handleMemoSave(userId, text);
   } catch (error) {
     console.error(`[server] Error handling event for user ${userId}:`, error);
@@ -114,6 +120,46 @@ async function handleMemoSave(userId: string, input: string): Promise<void> {
     classification.summary || input.substring(0, 20),
     reminderDates[0] // 最初のリマインド日時を表示
   );
+}
+
+async function handlePostback(event: PostbackEvent): Promise<void> {
+  const userId = event.source.userId!;
+  const params = new URLSearchParams(event.postback.data);
+  const action = params.get("action");
+  const memoId = params.get("memoId");
+
+  if (!memoId) return;
+
+  try {
+    if (action === "delete") {
+      await archiveMemo(memoId);
+      await sendText(userId, "🗑️ メモを削除しました。");
+    } else if (action === "snooze") {
+      const snoozeDate = new Date();
+      snoozeDate.setDate(snoozeDate.getDate() + 7);
+      snoozeDate.setHours(20, 0, 0, 0);
+      await scheduleReminderAt(memoId, snoozeDate);
+      await sendText(userId, "🔁 1週間後にもう一度リマインドします。");
+    }
+  } catch (error) {
+    console.error(`[server] Postback error:`, error);
+  }
+}
+
+async function handleImageSave(userId: string, messageId: string): Promise<void> {
+  await sendText(userId, "🖼️ 画像を解析中...");
+
+  const profile = await getOrCreateProfile(userId);
+  const imageBuffer = await downloadImage(messageId);
+  const classification = await classifyImage(imageBuffer);
+
+  const memo = await saveMemo(profile.id, "[画像メモ]", "text", classification);
+  const reminderDates = calcReminderDates(classification.category, classification.remind_strategy);
+  for (const date of reminderDates) {
+    await scheduleReminder(memo.id, date);
+  }
+
+  await sendMemoSaved(userId, classification.category, classification.summary || "画像メモ", reminderDates[0]);
 }
 
 async function handleListCommand(userId: string): Promise<void> {

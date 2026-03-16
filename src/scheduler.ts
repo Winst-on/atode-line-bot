@@ -12,7 +12,7 @@ import {
   markReminderSent,
   getTodayReminderCount,
 } from "./database";
-import { sendText } from "./line-client";
+import { sendReminderWithActions } from "./line-client";
 import { buildReminderMessage } from "./reminder-scheduler";
 import { Category } from "./types";
 
@@ -71,7 +71,7 @@ async function processReminders(): Promise<void> {
           reminderCount
         );
 
-        await sendText(lineUserId, message);
+        await sendReminderWithActions(lineUserId, message, memo.id, reminder.id);
         await markReminderSent(reminder.id);
 
         console.log(`[scheduler] Sent reminder ${reminder.id} to user ${lineUserId}`);
