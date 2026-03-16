@@ -91,6 +91,11 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
       return;
     }
 
+    if (text === "テスト" && process.env.TEST_MODE === "true") {
+      await handleTestReminder(userId);
+      return;
+    }
+
     await handleMemoSave(userId, text);
   } catch (error) {
     console.error(`[server] Error handling event for user ${userId}:`, error);
@@ -191,6 +196,19 @@ function detectImageFormat(buf: Buffer): string | null {
     if (buf.slice(0, magic.length).equals(magic)) return fmt;
   }
   return null;
+}
+
+async function handleTestReminder(userId: string): Promise<void> {
+  const profile = await getOrCreateProfile(userId);
+  const memos = await getMemosByUser(profile.id);
+  if (memos.length === 0) {
+    await sendText(userId, "⚠️ テスト用のメモがありません。先に何かメモを保存してください。");
+    return;
+  }
+  const latestMemo = memos[0];
+  const reminderDate = new Date(Date.now() + 60 * 1000); // 1分後
+  await scheduleReminderAt(latestMemo.id, reminderDate);
+  await sendText(userId, `🧪 テスト: 「${latestMemo.ai_summary || latestMemo.raw_input.substring(0, 20)}」のリマインドを1分後に設定しました。`);
 }
 
 async function handleImageSave(userId: string, messageId: string): Promise<void> {

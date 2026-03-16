@@ -21,11 +21,13 @@ const DAILY_LIMIT = 3; // 1ユーザーあたり1日のリマインド上限
 async function processReminders(): Promise<void> {
   console.log(`[scheduler] Starting reminder processing at ${new Date().toISOString()}`);
 
-  // 現在時刻が8:00〜21:00の間のみ実行（静寂時間チェック）
-  const hour = new Date().getHours();
-  if (hour < 8 || hour >= 21) {
-    console.log(`[scheduler] Quiet hours (${hour}:xx), skipping`);
-    return;
+  // 現在時刻が8:00〜21:00の間のみ実行（TEST_MODE時はスキップ）
+  if (process.env.TEST_MODE !== "true") {
+    const hour = new Date().getHours();
+    if (hour < 8 || hour >= 21) {
+      console.log(`[scheduler] Quiet hours (${hour}:xx), skipping`);
+      return;
+    }
   }
 
   let processed = 0;
@@ -87,12 +89,13 @@ async function processReminders(): Promise<void> {
   console.log(`[scheduler] Done. Processed: ${processed}, Skipped: ${skipped}`);
 }
 
-// 毎時00分に実行
-cron.schedule("0 * * * *", processReminders, {
+// TEST_MODE=true のときは毎分実行、通常は毎時00分
+const cronSchedule = process.env.TEST_MODE === "true" ? "* * * * *" : "0 * * * *";
+cron.schedule(cronSchedule, processReminders, {
   timezone: "Asia/Tokyo",
 });
 
-console.log("[scheduler] Cron scheduler started. Running every hour at :00");
+console.log(`[scheduler] Cron scheduler started. Schedule: ${cronSchedule}`);
 
 // 起動時に一度実行（デバッグ用）
 if (process.env.RUN_ONCE === "true") {
