@@ -73,10 +73,15 @@ async function fetchUrlMeta(url: string): Promise<{ content: string | null; ogIm
       $('meta[property="og:description"]').attr("content") ||
       $('meta[name="description"]').attr("content") ||
       "";
-    const ogImage =
+    const ogImageRaw =
       $('meta[property="og:image"]').attr("content") ||
       $('meta[name="twitter:image"]').attr("content") ||
       null;
+    // 相対URLを絶対URLに変換
+    let ogImage: string | null = null;
+    if (ogImageRaw) {
+      ogImage = ogImageRaw.startsWith("http") ? ogImageRaw : new URL(ogImageRaw, url).href;
+    }
     const content = [title, description].filter(Boolean).join(" / ").substring(0, 200);
     return { content: content || null, ogImage: ogImage || null };
   } catch {
