@@ -162,7 +162,9 @@ export async function sendMemoSaved(
 }
 
 /**
- * メモ一覧をFlexで送信（カルーセル最大12件 + 残りはテキスト一覧）
+ * メモ一覧をリスト形式のFlex Bubbleで送信
+ * 1枚のバブルに全情報（サムネイル・URL・編集削除ボタン）を縦に並べる
+ * 10件ごとにページ分割
  */
 export async function sendMemoList(userId: string, memos: Memo[]): Promise<void> {
   if (memos.length === 0) {
@@ -179,78 +181,161 @@ export async function sendMemoList(userId: string, memos: Memo[]): Promise<void>
     memo: "💡",
   };
 
-  const CAROUSEL_LIMIT = 12;
-  const displayMemos = memos.slice(0, CAROUSEL_LIMIT);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bubbles: any[] = displayMemos.map((memo) => {
-    const isUrl = /^https?:\/\//i.test(memo.raw_input);
-    const bodyContents: object[] = [
-      {
-        type: "text",
-        text: `${categoryEmoji[memo.ai_category as Category] || "📌"} ${memo.ai_summary || memo.raw_input.substring(0, 20)}`,
-        size: "sm",
-        weight: "bold",
-        wrap: true,
-      },
-      {
-        type: "text",
-        text: formatDate(new Date(memo.created_at)),
-        size: "xxs",
-        color: "#888888",
-      },
-      ...(isUrl ? [{
-        type: "button",
-        action: { type: "uri", label: "🔗 開く", uri: memo.raw_input },
-        style: "link",
-        height: "sm",
-        margin: "xs",
-      }] : []),
-    ];
+  const PAGE_SIZE = 10;
 
-    const bubble: Record<string, object | string> = {
+  for (let pageStart = 0; pageStart < memos.length; pageStart += PAGE_SIZE) {
+    const pageMemos = memos.slice(pageStart, pageStart + PAGE_SIZE);
+    const pageEnd = pageStart + pageMemos.length;
+    const headerText = memos.length <= PAGE_SIZE
+      ? `全${memos.length}件`
+      : `${pageStart + 1}〜${pageEnd}件目 / 全${memos.length}件`;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[] = [];
+
+    pageMemos.forEach((memo, i) => {
+      const isUrl = /^https?:\/\//i.test(memo.raw_input);
+      const emoji = categoryEmoji[memo.ai_category as Category] || "📌";
+      const summary = memo.ai_summary || memo.raw_input.substring(0, 25);
+
+      // サムネイル or カテゴリ絵文字
+      const iconContent = memo.image_url
+        ? {
+            type: "image",
+            url: memo.image_url,
+            size: "xs",
+            aspectRatio: "1:1",
+            aspectMode: "cover",
+            flex: 0,
+          }
+        : {
+            type: "text",
+            text: emoji,
+            size: "xl",
+            flex: 0,
+            align: "center",
+          };
+
+      const rowContents: object[] = [
+        // タイトル行（サムネイル + テキスト）
+        {
+          type: "box",
+          layout: "horizontal",
+          spacing: "md",
+          alignItems: "center",
+          contents: [
+            iconContent,
+            {
+              type: "box",
+              layout: "vertical",
+              flex: 1,
+              contents: [
+                {
+                  type: "text",
+                  text: summary,
+                  size: "sm",
+                  weight: "bold",
+                  wrap: true,
+                },
+                {
+                  type: "text",
+                  text: `${emoji} ${formatDate(new Date(memo.created_at))}`,
+                  size: "xxs",
+                  color: "#888888",
+                  margin: "xs",
+                },
+              ],
+            },
+          ],
+        },
+        // URLボタン（URLメモの場合）
+        ...(isUrl ? [{
+          type: "button",
+          action: { type: "uri", label: "🔗 URLを開く", uri: memo.raw_input },
+          style: "link",
+          height: "sm",
+          margin: "xs",
+        }] : []),
+        // 編集・削除ボタン
+        {
+          type: "box",
+          layout: "horizontal",
+          margin: "xs",
+          contents: [
+            {
+              type: "button",
+              action: {
+                type: "postback",
+                label: "✏️ 編集",
+                data: `action=edit&memoId=${memo.id}`,
+                displayText: "タイトルを編集します",
+              },
+              style: "link",
+              height: "sm",
+              flex: 1,
+            },
+            {
+              type: "button",
+              action: {
+                type: "postback",
+                label: "🗑️ 削除",
+                data: `action=delete&memoId=${memo.id}`,
+                displayText: "メモを削除しました",
+              },
+              style: "link",
+              height: "sm",
+              flex: 1,
+              color: "#FF5551",
+            },
+          ],
+        },
+      ];
+
+      rows.push({
+        type: "box",
+        layout: "vertical",
+        paddingAll: "12px",
+        contents: rowContents,
+      });
+
+      // 区切り線（最後の行以外）
+      if (i < pageMemos.length - 1) {
+        rows.push({ type: "separator" });
+      }
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bubble: any = {
       type: "bubble",
-      size: memo.image_url ? "kilo" : "micro",
+      size: "mega",
+      header: {
+        type: "box",
+        layout: "vertical",
+        paddingAll: "12px",
+        backgroundColor: "#F8F8F8",
+        contents: [
+          {
+            type: "text",
+            text: `📋 メモ一覧  ${headerText}`,
+            size: "xs",
+            color: "#888888",
+            weight: "bold",
+          },
+        ],
+      },
       body: {
         type: "box",
         layout: "vertical",
-        spacing: "sm",
-        contents: bodyContents,
+        paddingAll: "0px",
+        contents: rows,
       },
     };
 
-    if (memo.image_url) {
-      bubble.hero = {
-        type: "image",
-        url: memo.image_url,
-        size: "full",
-        aspectRatio: "20:13",
-        aspectMode: "cover",
-      };
-    }
-
-    return bubble;
-  });
-
-  const flexMessage: FlexMessage = {
-    type: "flex",
-    altText: `メモ一覧（${memos.length}件）`,
-    contents: {
-      type: "carousel",
-      contents: bubbles,
-    },
-  };
-
-  await pushMessageWithRetry(userId, flexMessage);
-
-  // 13件目以降はテキスト一覧で全件表示
-  if (memos.length > CAROUSEL_LIMIT) {
-    const remaining = memos.slice(CAROUSEL_LIMIT);
-    const lines = remaining.map((memo, i) => {
-      const emoji = categoryEmoji[memo.ai_category as Category] || "📌";
-      const summary = memo.ai_summary || memo.raw_input.substring(0, 20);
-      return `${CAROUSEL_LIMIT + i + 1}. ${emoji} ${summary}（${formatDate(new Date(memo.created_at))}）`;
-    });
-    await sendText(userId, `📋 続き（${CAROUSEL_LIMIT + 1}〜${memos.length}件目）\n\n${lines.join("\n")}`);
+    await pushMessageWithRetry(userId, {
+      type: "flex",
+      altText: `📋 メモ一覧（${headerText}）`,
+      contents: bubble,
+    } as FlexMessage);
   }
 }
 
@@ -320,31 +405,49 @@ export async function sendReminderWithActions(
     },
     footer: {
       type: "box",
-      layout: "horizontal",
+      layout: "vertical",
       spacing: "sm",
       contents: [
         {
-          type: "button",
-          action: {
-            type: "postback",
-            label: "🗑️ 削除",
-            data: `action=delete&memoId=${memoId}&reminderId=${reminderId}`,
-            displayText: "このメモを削除しました",
-          },
-          style: "secondary",
-          height: "sm",
+          type: "box",
+          layout: "horizontal",
+          spacing: "sm",
+          contents: [
+            {
+              type: "button",
+              action: {
+                type: "postback",
+                label: "🗑️ 削除",
+                data: `action=delete&memoId=${memoId}&reminderId=${reminderId}`,
+                displayText: "このメモを削除しました",
+              },
+              style: "secondary",
+              height: "sm",
+            },
+            {
+              type: "button",
+              action: {
+                type: "postback",
+                label: "🔁 1週間後にまた",
+                data: `action=snooze&memoId=${memoId}`,
+                displayText: "1週間後にもう一度リマインドします",
+              },
+              style: "primary",
+              height: "sm",
+              color: "#4CAF50",
+            },
+          ],
         },
         {
           type: "button",
           action: {
             type: "postback",
-            label: "🔁 1週間後にまた",
-            data: `action=snooze&memoId=${memoId}`,
-            displayText: "1週間後にもう一度リマインドします",
+            label: "✏️ タイトルを編集",
+            data: `action=edit&memoId=${memoId}`,
+            displayText: "タイトルを編集します",
           },
-          style: "primary",
+          style: "link",
           height: "sm",
-          color: "#4CAF50",
         },
       ],
     },

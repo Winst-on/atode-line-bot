@@ -29,6 +29,7 @@ export interface ClassificationResult {
 export interface Profile {
   id: string;
   line_user_id: string;
+  pending_rename_memo_id: string | null;
   created_at: string;
 }
 

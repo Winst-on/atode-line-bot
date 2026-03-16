@@ -31,10 +31,10 @@ export async function getOrCreateProfile(lineUserId: string): Promise<Profile> {
 
 // ===== Memo操作 =====
 
-export async function uploadImage(buffer: Buffer, filename: string): Promise<string | null> {
+export async function uploadImage(buffer: Buffer, filename: string, contentType = "image/jpeg"): Promise<string | null> {
   const { error } = await supabase.storage
     .from("memo-images")
-    .upload(filename, buffer, { contentType: "image/jpeg", upsert: false });
+    .upload(filename, buffer, { contentType, upsert: false });
   if (error) {
     console.error("[database] Image upload failed:", error.message);
     return null;
@@ -90,6 +90,33 @@ export async function archiveMemo(memoId: string): Promise<void> {
     .eq("id", memoId);
 
   if (error) throw new Error(`Failed to archive memo: ${error.message}`);
+}
+
+export async function renameMemo(memoId: string, newSummary: string): Promise<void> {
+  const { error } = await supabase
+    .from("memos")
+    .update({ ai_summary: newSummary })
+    .eq("id", memoId);
+
+  if (error) throw new Error(`Failed to rename memo: ${error.message}`);
+}
+
+export async function setPendingRename(profileId: string, memoId: string): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ pending_rename_memo_id: memoId })
+    .eq("id", profileId);
+
+  if (error) throw new Error(`Failed to set pending rename: ${error.message}`);
+}
+
+export async function clearPendingRename(profileId: string): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ pending_rename_memo_id: null })
+    .eq("id", profileId);
+
+  if (error) throw new Error(`Failed to clear pending rename: ${error.message}`);
 }
 
 // ===== Reminder操作 =====

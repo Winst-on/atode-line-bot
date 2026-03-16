@@ -18,6 +18,9 @@ import {
   archiveMemo,
   scheduleReminderAt,
   uploadImage,
+  renameMemo,
+  setPendingRename,
+  clearPendingRename,
 } from "./database";
 import { sendText, sendMemoSaved, sendMemoList, downloadImage } from "./line-client";
 import { calcReminderDates } from "./reminder-scheduler";
@@ -70,6 +73,13 @@ async function handleEvent(event: WebhookEvent): Promise<void> {
     const messageEvent = event as MessageEvent;
     const textMessage = messageEvent.message as TextEventMessage;
     const text = textMessage.text.trim();
+
+    // タイトル変更待ち状態のチェック（他のコマンドより先に処理）
+    const profile = await getOrCreateProfile(userId);
+    if (profile.pending_rename_memo_id) {
+      await handleRenameComplete(userId, profile.id, profile.pending_rename_memo_id, text);
+      return;
+    }
 
     if (text === "一覧" || text === "リスト" || text === "list") {
       await handleListCommand(userId);
@@ -143,10 +153,44 @@ async function handlePostback(event: PostbackEvent): Promise<void> {
       snoozeDate.setHours(20, 0, 0, 0);
       await scheduleReminderAt(memoId, snoozeDate);
       await sendText(userId, "🔁 1週間後にもう一度リマインドします。");
+    } else if (action === "edit") {
+      const profile = await getOrCreateProfile(userId);
+      await setPendingRename(profile.id, memoId);
+      await sendText(userId, "✏️ 新しいタイトルを送ってください。\n（キャンセルするには「キャンセル」と送ってください）");
     }
   } catch (error) {
     console.error(`[server] Postback error:`, error);
   }
+}
+
+async function handleRenameComplete(
+  userId: string,
+  profileId: string,
+  memoId: string,
+  newTitle: string
+): Promise<void> {
+  await clearPendingRename(profileId);
+
+  if (newTitle === "キャンセル") {
+    await sendText(userId, "キャンセルしました。");
+    return;
+  }
+
+  await renameMemo(memoId, newTitle);
+  await sendText(userId, `✅ タイトルを「${newTitle}」に変更しました。`);
+}
+
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_MAGIC: Record<string, Buffer> = {
+  jpeg: Buffer.from([0xff, 0xd8, 0xff]),
+  png: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+};
+
+function detectImageFormat(buf: Buffer): string | null {
+  for (const [fmt, magic] of Object.entries(ALLOWED_IMAGE_MAGIC)) {
+    if (buf.slice(0, magic.length).equals(magic)) return fmt;
+  }
+  return null;
 }
 
 async function handleImageSave(userId: string, messageId: string): Promise<void> {
@@ -155,9 +199,25 @@ async function handleImageSave(userId: string, messageId: string): Promise<void>
   const profile = await getOrCreateProfile(userId);
   const imageBuffer = await downloadImage(messageId);
 
+  // サイズチェック（5MB上限）
+  if (imageBuffer.length > MAX_IMAGE_SIZE_BYTES) {
+    await sendText(userId, "⚠️ 画像サイズが大きすぎます（上限5MB）。\n小さい画像を送ってください。");
+    return;
+  }
+
+  // フォーマットチェック（JPEG・PNGのみ）
+  const fmt = detectImageFormat(imageBuffer);
+  if (!fmt) {
+    await sendText(userId, "⚠️ 対応していない画像形式です。\nJPEGまたはPNG形式の画像を送ってください。");
+    return;
+  }
+
+  const ext = fmt === "png" ? "png" : "jpg";
+  const contentType = fmt === "png" ? "image/png" : "image/jpeg";
+
   // Supabase Storageにアップロード
-  const filename = `${profile.id}/${Date.now()}.jpg`;
-  const imageUrl = await uploadImage(imageBuffer, filename);
+  const filename = `${profile.id}/${Date.now()}.${ext}`;
+  const imageUrl = await uploadImage(imageBuffer, filename, contentType);
 
   const classification = await classifyImage(imageBuffer);
   const memo = await saveMemo(profile.id, "[画像メモ]", "text", classification, imageUrl);
