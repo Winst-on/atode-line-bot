@@ -13,7 +13,7 @@ export const MAIN_QUICK_REPLY: QuickReply = {
   items: [
     {
       type: "action",
-      action: { type: "message", label: "📋 一覧", text: "一覧" },
+      action: { type: "message", label: "📋 一覧・編集削除", text: "一覧" },
     },
     {
       type: "action",
@@ -248,7 +248,6 @@ export async function sendMemoList(userId: string, memos: Memo[]): Promise<void>
     return;
   }
 
-  await sendText(userId, "📋 メモ一覧です。\n各メモの「✏️ 編集」でタイトル変更、「🗑️ 削除」で削除できます。", false);
 
   const categoryEmoji: Record<Category, string> = {
     shopping: "🛍️",
