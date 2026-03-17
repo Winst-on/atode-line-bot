@@ -74,7 +74,7 @@ export async function downloadImage(messageId: string): Promise<Buffer> {
 export async function sendText(
   userId: string,
   text: string,
-  withMenu = false
+  withMenu = true
 ): Promise<void> {
   const message: TextMessage = { type: "text", text };
   if (withMenu) message.quickReply = MAIN_QUICK_REPLY;
@@ -247,6 +247,8 @@ export async function sendMemoList(userId: string, memos: Memo[]): Promise<void>
     await sendText(userId, "📋 保存されているメモはありません。\n\nテキストやURLを送ってメモを追加してみてください！");
     return;
   }
+
+  await sendText(userId, "📋 メモ一覧です。\n各メモの「✏️ 編集」でタイトル変更、「🗑️ 削除」で削除できます。", false);
 
   const categoryEmoji: Record<Category, string> = {
     shopping: "🛍️",

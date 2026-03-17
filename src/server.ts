@@ -503,8 +503,12 @@ async function handleFeedbackReceived(
     return;
   }
 
-  await saveFeedbackMessage(profileId, message);
-  console.log(`[feedback] userId=${userId} message="${message}"`);
+  try {
+    await saveFeedbackMessage(profileId, message);
+    console.log(`[feedback] userId=${userId} message="${message}"`);
+  } catch (err) {
+    console.error("[feedback] Failed to save feedback to DB:", err);
+  }
 
   await sendText(
     userId,
