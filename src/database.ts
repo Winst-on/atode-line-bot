@@ -92,6 +92,15 @@ export async function archiveMemo(memoId: string): Promise<void> {
   if (error) throw new Error(`Failed to archive memo: ${error.message}`);
 }
 
+export async function updateMemoCategory(memoId: string, category: string): Promise<void> {
+  const { error } = await supabase
+    .from("memos")
+    .update({ ai_category: category })
+    .eq("id", memoId);
+
+  if (error) throw new Error(`Failed to update memo category: ${error.message}`);
+}
+
 export async function renameMemo(memoId: string, newSummary: string): Promise<void> {
   const { error } = await supabase
     .from("memos")
@@ -117,6 +126,32 @@ export async function clearPendingRename(profileId: string): Promise<void> {
     .eq("id", profileId);
 
   if (error) throw new Error(`Failed to clear pending rename: ${error.message}`);
+}
+
+export async function setPendingFeedback(profileId: string): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ pending_feedback: true })
+    .eq("id", profileId);
+
+  if (error) throw new Error(`Failed to set pending feedback: ${error.message}`);
+}
+
+export async function clearPendingFeedback(profileId: string): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ pending_feedback: false })
+    .eq("id", profileId);
+
+  if (error) throw new Error(`Failed to clear pending feedback: ${error.message}`);
+}
+
+export async function saveFeedbackMessage(profileId: string, message: string): Promise<void> {
+  const { error } = await supabase
+    .from("feedback")
+    .insert({ profile_id: profileId, message });
+
+  if (error) throw new Error(`Failed to save feedback: ${error.message}`);
 }
 
 // ===== Reminder操作 =====

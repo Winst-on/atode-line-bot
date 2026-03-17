@@ -1,4 +1,4 @@
-import { Client, FlexMessage, TextMessage } from "@line/bot-sdk";
+import { Client, FlexMessage, TextMessage, QuickReply } from "@line/bot-sdk";
 import { Readable } from "stream";
 import { Category, Memo } from "./types";
 
@@ -7,6 +7,24 @@ export const lineClient = new Client({
 });
 
 const LINE_PUSH_RETRY_DELAYS_MS = [500, 1500, 3000];
+
+/** メイン画面に常時表示するクイックリプライ */
+export const MAIN_QUICK_REPLY: QuickReply = {
+  items: [
+    {
+      type: "action",
+      action: { type: "message", label: "📋 一覧", text: "一覧" },
+    },
+    {
+      type: "action",
+      action: { type: "message", label: "📖 ヘルプ", text: "help" },
+    },
+    {
+      type: "action",
+      action: { type: "message", label: "💬 感想を送る", text: "感想" },
+    },
+  ],
+};
 
 async function pushMessageWithRetry(
   userId: string,
@@ -53,21 +71,55 @@ export async function downloadImage(messageId: string): Promise<Buffer> {
 /**
  * テキストメッセージを送信
  */
-export async function sendText(userId: string, text: string): Promise<void> {
-  await pushMessageWithRetry(userId, {
-    type: "text",
-    text,
-  });
+export async function sendText(
+  userId: string,
+  text: string,
+  withMenu = false
+): Promise<void> {
+  const message: TextMessage = { type: "text", text };
+  if (withMenu) message.quickReply = MAIN_QUICK_REPLY;
+  await pushMessageWithRetry(userId, message);
 }
 
 /**
  * メモ保存完了メッセージ（Flex Message）を送信
  */
+export async function sendCategoryMenu(userId: string, memoId: string): Promise<void> {
+  const categories: { category: Category; label: string }[] = [
+    { category: "restaurant", label: "🍽️ 飲食店" },
+    { category: "shopping", label: "🛍️ 買い物" },
+    { category: "travel", label: "✈️ 旅行" },
+    { category: "event", label: "🎭 イベント" },
+    { category: "book", label: "📚 本・コンテンツ" },
+    { category: "tool", label: "🛠️ ツール" },
+    { category: "memo", label: "💡 メモ" },
+  ];
+
+  const message: TextMessage = {
+    type: "text",
+    text: "カテゴリを選んでください：",
+    quickReply: {
+      items: categories.map(({ category, label }) => ({
+        type: "action",
+        action: {
+          type: "postback",
+          label,
+          data: `action=setCategory&memoId=${memoId}&category=${category}`,
+          displayText: `${label}に変更`,
+        },
+      })),
+    },
+  };
+
+  await pushMessageWithRetry(userId, message);
+}
+
 export async function sendMemoSaved(
   userId: string,
   category: Category,
   summary: string,
   remindDate: Date,
+  memoId: string,
   imageUrl?: string | null,
   rawInput?: string
 ): Promise<void> {
@@ -77,6 +129,7 @@ export async function sendMemoSaved(
     restaurant: "🍽️ 飲食店",
     book: "📚 本・コンテンツ",
     travel: "✈️ 旅行",
+    tool: "🛠️ ツール",
     memo: "💡 メモ",
   };
 
@@ -156,6 +209,29 @@ export async function sendMemoSaved(
     type: "flex",
     altText: `「${summary}」を保存しました`,
     contents: bubble,
+    quickReply: {
+      items: [
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "✏️ タイトル編集",
+            data: `action=edit&memoId=${memoId}`,
+            displayText: "タイトルを編集します",
+          },
+        },
+        {
+          type: "action",
+          action: {
+            type: "postback",
+            label: "📂 カテゴリ変更",
+            data: `action=changeCategoryMenu&memoId=${memoId}`,
+            displayText: "カテゴリを変更します",
+          },
+        },
+        ...MAIN_QUICK_REPLY.items,
+      ],
+    },
   };
 
   await pushMessageWithRetry(userId, message);
@@ -178,6 +254,7 @@ export async function sendMemoList(userId: string, memos: Memo[]): Promise<void>
     restaurant: "🍽️",
     book: "📚",
     travel: "✈️",
+    tool: "🛠️",
     memo: "💡",
   };
 
